@@ -3,7 +3,7 @@ import { CreatureSheetData } from "@actor/creature/index.ts";
 import { MODIFIER_TYPES, createProficiencyModifier } from "@actor/modifiers.ts";
 import { ActorSheetDataPF2e } from "@actor/sheet/data-types.ts";
 import { SaveType } from "@actor/types.ts";
-import { AncestryPF2e, BackgroundPF2e, ClassPF2e, DeityPF2e, FeatPF2e, HeritagePF2e, ItemPF2e, LorePF2e } from "@item";
+import { AncestryPF2e, BackgroundPF2e, ClassPF2e, DeityPF2e, FeatPF2e, HeritagePF2e, ItemPF2e, ItemProxyPF2e, LorePF2e } from "@item";
 import { isSpellConsumable } from "@item/consumable/spell-consumables.ts";
 import { ActionCost, Frequency } from "@item/data/base.ts";
 import { ItemSourcePF2e } from "@item/data/index.ts";
@@ -512,6 +512,23 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
             htmlQuery(mainPanel, "button[data-action=edit-attribute-modifiers]")?.addEventListener("click", () => {
                 (this.#attributeBuilder ??= new AttributeBuilder(this.actor)).render(true);
                 this.actor.apps[this.#attributeBuilder.appId] = this.#attributeBuilder;
+            });
+        }
+
+        // Item chat cards
+        for (const element of htmlQueryAll(html, ".item[data-item-id] .item-image, .item[data-item-id] .item-chat")) {
+            element.addEventListener("click", async (event) => {
+                const itemId = htmlClosest(element, "[data-item-id]")?.dataset.itemId ?? "";
+                // Handle formula UUIDs
+                if (UUIDUtils.isItemUUID(itemId)) {
+                    const formula = this.#knownFormulas[itemId] as CraftingFormula;
+                    if (!formula) {
+                        throw ErrorPF2e(`Invalid UUID [${itemId}]!`);
+                    }
+                    
+                    const item = new ItemProxyPF2e(formula.item.toObject(), { parent: this.actor }); 
+                    await item.toMessage(event, { create: true, data: { fromFormula: true } });
+                }
             });
         }
 
