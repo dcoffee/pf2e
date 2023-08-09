@@ -127,6 +127,7 @@
                 "ShieldDamagedForNDestroyed": "Their shield also takes {shieldDamage} damage, destroying it.",
                 "ShieldNotRaised": "{actor} has not raised their shield.",
                 "TakesNoDamage": "<actor>{actor}</actor> takes no damage.",
+                "DamageAttributed": "<actor>{hitPointSource}</actor>'s health is affected.",
                 "TheTarget": "The target"
             },
             "Character": {

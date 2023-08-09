@@ -112,6 +112,9 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
     /** Skill checks for the actor if supported by the actor type */
     declare skills?: Partial<CreatureSkills>;
 
+    /** Used for cases where this actor doesn't use its own hp, but rather another actor's hp */
+    declare hitPointSourceId?: ActorUUID;
+
     /** A cached copy of `Actor#itemTypes`, lazily regenerated every data preparation cycle */
     private declare _itemTypes: EmbeddedItemInstances<this> | null;
 
@@ -205,6 +208,14 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
 
     get size(): Size {
         return this.system.traits?.size.value ?? "med";
+    }
+
+    get hitPointSource(): ActorPF2e {
+        return this.hitPointSourceId ? game.actors.get(this.hitPointSourceId) ?? this : this;
+    }
+
+    get hasOtherHitPointSource() : boolean {
+        return this.hitPointSource.uuid !== this.uuid;
     }
 
     /**
@@ -1106,7 +1117,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         breakdown = [],
         notes = [],
     }: ApplyDamageParams): Promise<this> {
-        const { hitPoints } = this;
+        const { hitPoints } = this.hitPointSource;
         if (!hitPoints) return this;
 
         // Round damage and healing (negative values) toward zero
@@ -1198,13 +1209,13 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
 
         const hpUpdate = this.calculateHealthDelta({
             hp: hitPoints,
-            sp: this.isOfType("character") ? this.attributes.sp : undefined,
+            sp: this.hitPointSource.isOfType("character") ? this.hitPointSource.attributes.sp : undefined,
             delta: finalDamage - damageAbsorbedByShield - damageAbsorbedByActor,
         });
         const hpDamage = hpUpdate.totalApplied;
 
         // Save the pre-update state to calculate undo values
-        const preUpdateSource = this.toObject();
+        const preUpdateSource = this.hitPointSource.toObject();
 
         // Make updates
         if (blockingShield && shieldDamage > 0) {
@@ -1215,7 +1226,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         }
 
         if (hpDamage !== 0) {
-            const updated = await this.update(hpUpdate.updates, { damageTaken: hpDamage });
+            const updated = await this.hitPointSource.update(hpUpdate.updates, { damageTaken: hpDamage });
             const deadAtZero = ["npcsOnly", "both"].includes(game.settings.get("pf2e", "automation.actorsDeadAtZero"));
             const toggleDefeated =
                 updated.isDead &&
@@ -1251,13 +1262,18 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
                     ? localize("ShieldDamagedForNDestroyed")
                     : localize("ShieldDamagedForN")
                 : null;
+        
+        const sharedStatement = this.hasOtherHitPointSource && hpDamage !== 0
+            ? localize("DamageAttributed")
+            : null;
 
         const statements = ((): string => {
-            const concatenated = [hpStatement, shieldStatement]
+            const concatenated = [hpStatement, shieldStatement, sharedStatement]
                 .filter((s): s is string => !!s)
                 .map((s) =>
                     game.i18n.format(s, {
                         actor: token.name.replace(/[<>]/g, ""),
+                        hitPointSource: (this.hitPointSource.token?.name ?? this.hitPointSource.name).replace(/[<>]/g, ""),
                         hpDamage: Math.abs(hpDamage),
                         absorbedDamage: damageAbsorbedByShield,
                         shieldDamage,
@@ -1316,7 +1332,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
 
         const appliedDamage = canUndoDamage
             ? {
-                  uuid: this.uuid,
+                  uuid: this.hitPointSource.uuid,
                   isHealing: hpDamage < 0,
                   shield: shieldDamage !== 0 ? { id: actorShield?.itemId ?? "", damage: shieldDamage } : null,
                   persistent: persistentCreated.map((c) => c.id),
@@ -1763,9 +1779,17 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         options: ActorUpdateContext<TParent>,
         user: UserPF2e
     ): Promise<boolean | void> {
+        // Redirect HP changes to an hp-tracking source Actor, if present
+        if (this.hasOtherHitPointSource && changed.system?.attributes?.hp) {
+            await this.hitPointSource.update({ "system.attributes.hp": changed.system?.attributes?.hp });
+
+            delete changed.system?.attributes?.hp;
+        }
+
         // Always announce HP changes for player-owned actors as floaty text (via `damageTaken` option)
         const changedHP = changed.system?.attributes?.hp;
         const currentHP = this.hitPoints;
+
         if (!options.damageTaken && this.hasPlayerOwner && typeof changedHP?.value === "number" && currentHP) {
             const damageTaken = -1 * (changedHP.value - currentHP.value);
             const levelChanged = !!changed.system?.details && "level" in changed.system.details;
