@@ -4,7 +4,7 @@ import { Alignment } from "@actor/creature/types.ts";
 import { ActorType } from "@actor/data/index.ts";
 import { AttributeString } from "@actor/types.ts";
 import {
-    ActionItemPF2e,
+    AbilityItemPF2e,
     AfflictionPF2e,
     AncestryPF2e,
     ArmorPF2e,
@@ -1129,6 +1129,7 @@ export const PF2ECONFIG = {
         shisk: "PF2E.LanguageShisk",
         shoanti: "PF2E.LanguageShoanti",
         shoony: "PF2E.LanguageShoony",
+        shory: "PF2E.LanguageShory",
         skald: "PF2E.LanguageSkald",
         sphinx: "PF2E.LanguageSphinx",
         strix: "PF2E.LanguageStrix",
@@ -1334,7 +1335,7 @@ export const PF2ECONFIG = {
 
     Item: {
         documentClasses: {
-            action: ActionItemPF2e,
+            action: AbilityItemPF2e,
             affliction: AfflictionPF2e,
             ancestry: AncestryPF2e,
             armor: ArmorPF2e,

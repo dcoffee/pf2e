@@ -15,7 +15,7 @@ import {
     UnaffectedType,
 } from "@actor/types.ts";
 import { AbstractEffectPF2e, ArmorPF2e, ContainerPF2e, ItemPF2e, ItemProxyPF2e, PhysicalItemPF2e } from "@item";
-import { ActionTrait } from "@item/action/types.ts";
+import { ActionTrait } from "@item/ability/types.ts";
 import { AfflictionSource } from "@item/affliction/index.ts";
 import { ConditionKey, ConditionSlug, ConditionSource, type ConditionPF2e } from "@item/condition/index.ts";
 import { PersistentDialog } from "@item/condition/persistent-damage-dialog.ts";
@@ -127,7 +127,9 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         });
     }
 
-    static override getDefaultArtwork(actorData: PreDocumentId<foundry.documents.ActorSource>): {
+    static override getDefaultArtwork(
+        actorData: foundry.documents.ActorSource | PreDocumentId<foundry.documents.ActorSource>
+    ): {
         img: ImageFilePath;
         texture: { src: ImageFilePath | VideoFilePath };
     } {
@@ -435,7 +437,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
                 };
 
                 const source = mergeObject(effect.toObject(), { flags });
-                source.system.level.value = data.level ?? aura.level ?? source.system.level.value;
+                source.system.level.value = aura.level ?? source.system.level.value;
                 source.system.duration.unit = "unlimited";
                 source.system.duration.expiry = null;
                 // Only transfer traits from the aura if the effect lacks its own
