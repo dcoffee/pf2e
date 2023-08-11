@@ -4,7 +4,7 @@ import { Alignment } from "@actor/creature/types.ts";
 import { ActorType } from "@actor/data/index.ts";
 import { AttributeString } from "@actor/types.ts";
 import {
-    ActionItemPF2e,
+    AbilityItemPF2e,
     AfflictionPF2e,
     AncestryPF2e,
     ArmorPF2e,
@@ -434,12 +434,14 @@ export const PF2ECONFIG = {
         greaterShadow: "PF2E.ArmorPropertyRuneGreaterShadow",
         greaterSlick: "PF2E.ArmorPropertyRuneGreaterSlick",
         greaterStanching: "PF2E.ArmorPropertyRuneGreaterStanching",
+        greaterSwallowSpike: "PF2E.ArmorPropertyRuneGreaterSwallowSpike",
         greaterWinged: "PF2E.ArmorPropertyRuneGreaterWinged",
         implacable: "PF2E.ArmorPropertyRuneImplacable",
         invisibility: "PF2E.ArmorPropertyRuneInvisibility",
         majorShadow: "PF2E.ArmorPropertyRuneMajorShadow",
         majorSlick: "PF2E.ArmorPropertyRuneMajorSlick",
         majorStanching: "PF2E.ArmorPropertyRuneMajorStanching",
+        majorSwallowSpike: "PF2E.ArmorPropertyRuneMajorSwallowSpike",
         moderateDread: "PF2E.ArmorPropertyRuneModerateDread",
         ready: "PF2E.ArmorPropertyRuneReady",
         rockBraced: "PF2E.ArmorPropertyRuneRockBraced",
@@ -448,6 +450,7 @@ export const PF2ECONFIG = {
         slick: "PF2E.ArmorPropertyRuneSlick",
         soaring: "PF2E.ArmorPropertyRuneSoaring",
         stanching: "PF2E.ArmorPropertyRuneStanching",
+        swallowSpike: "PF2E.ArmorPropertyRuneSwallowSpike",
         trueStanching: "PF2E.ArmorPropertyRuneTrueStanching",
         winged: "PF2E.ArmorPropertyRuneWinged",
     },
@@ -1129,6 +1132,7 @@ export const PF2ECONFIG = {
         shisk: "PF2E.LanguageShisk",
         shoanti: "PF2E.LanguageShoanti",
         shoony: "PF2E.LanguageShoony",
+        shory: "PF2E.LanguageShory",
         skald: "PF2E.LanguageSkald",
         sphinx: "PF2E.LanguageSphinx",
         strix: "PF2E.LanguageStrix",
@@ -1334,7 +1338,7 @@ export const PF2ECONFIG = {
 
     Item: {
         documentClasses: {
-            action: ActionItemPF2e,
+            action: AbilityItemPF2e,
             affliction: AfflictionPF2e,
             ancestry: AncestryPF2e,
             armor: ArmorPF2e,
