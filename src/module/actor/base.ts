@@ -1780,10 +1780,15 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         user: UserPF2e
     ): Promise<boolean | void> {
         // Redirect HP changes to an hp-tracking source Actor, if present
-        if (this.hasOtherHitPointSource && changed.system?.attributes?.hp) {
-            await this.hitPointSource.update({ "system.attributes.hp": changed.system?.attributes?.hp });
 
-            delete changed.system?.attributes?.hp;
+        if (this.hasOtherHitPointSource && changed.system?.attributes?.hp) {
+            const temp = Number(getProperty(changed, "system.attributes.hp.temp"));
+
+            if (temp) {
+                await this.hitPointSource.update({ "system.attributes.hp.temp": temp });
+
+                mergeObject(changed.system.attributes.hp, { temp: 0 });
+            }
         }
 
         // Always announce HP changes for player-owned actors as floaty text (via `damageTaken` option)
