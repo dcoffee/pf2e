@@ -113,7 +113,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
     declare skills?: Partial<CreatureSkills>;
 
     /** Used for cases where this actor doesn't use its own hp, but rather another actor's hp */
-    declare hitPointSourceId?: ActorUUID;
+    declare hitPointSourceId: ActorUUID | null;
 
     /** A cached copy of `Actor#itemTypes`, lazily regenerated every data preparation cycle */
     private declare _itemTypes: EmbeddedItemInstances<this> | null;
@@ -213,7 +213,9 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
     }
 
     get hitPointSource(): ActorPF2e {
-        return this.hitPointSourceId ? game.actors.get(this.hitPointSourceId) ?? this : this;
+        return this.hitPointSourceId && this.hitPointSourceId !== this.uuid
+            ? game.actors.get(this.hitPointSourceId) ?? this
+            : this;
     }
 
     get hasOtherHitPointSource() : boolean {
@@ -610,6 +612,7 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         this.armorClass = null;
         this.conditions = new ActorConditions();
         this.auras = new Map();
+        this.hitPointSourceId = null;
 
         const preparationWarnings: Set<string> = new Set();
         this.synthetics = {
@@ -1782,12 +1785,17 @@ class ActorPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e | n
         user: UserPF2e
     ): Promise<boolean | void> {
         // Redirect HP changes to an hp-tracking source Actor, if present
-
         if (this.hasOtherHitPointSource && changed.system?.attributes?.hp) {
             const temp = Number(getProperty(changed, "system.attributes.hp.temp"));
+            const tempSource = getProperty(changed, "system.attributes.hp.tempsource");
+            const shouldDeleteTempSource = getProperty(changed, "system.attributes.hp.-=tempsource") === null;
 
-            if (temp) {
-                await this.hitPointSource.update({ "system.attributes.hp.temp": temp });
+            if (temp || tempSource || shouldDeleteTempSource) {
+                await this.hitPointSource.update({
+                    "system.attributes.hp.temp": shouldDeleteTempSource ? 0 : temp,
+                    "system.attributes.hp.tempsource": tempSource,
+                    "system.attributes.hp.-=tempsource": shouldDeleteTempSource ? null : undefined,
+                });
 
                 mergeObject(changed.system.attributes.hp, { temp: 0 });
             }

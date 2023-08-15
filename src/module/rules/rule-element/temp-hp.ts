@@ -92,7 +92,7 @@ class TempHPRuleElement extends RuleElementPF2e<TempHPRuleSchema> {
     }
 
     override onDelete(actorUpdates: Record<string, unknown>): void {
-        const updatedActorData = mergeObject(this.actor._source, actorUpdates, { inplace: false });
+        const updatedActorData = mergeObject(this.actor.hitPointSource._source, actorUpdates, { inplace: false });
         if (getProperty(updatedActorData, "system.attributes.hp.tempsource") === this.item.id) {
             mergeObject(actorUpdates, {
                 "system.attributes.hp.temp": 0,
@@ -111,7 +111,10 @@ class TempHPRuleElement extends RuleElementPF2e<TempHPRuleSchema> {
                 ? "PF2E.Encounter.Broadcast.TempHP.SingleNew"
                 : "PF2E.Encounter.Broadcast.TempHP.PluralNew";
         const wasAt = oldQuantity > 0 ? game.i18n.format("PF2E.Encounter.Broadcast.TempHP.WasAt", { oldQuantity }) : "";
-        const [actor, item] = [this.actor.name, this.item.name];
+        const hitPointSourceName = this.actor.hasOtherHitPointSource
+            ? `${this.actor.name} (${this.actor.hitPointSource.name})`
+            : this.actor.name;
+        const [actor, item] = [hitPointSourceName, this.item.name];
         const content = game.i18n.format(singularOrPlural, { actor, newQuantity, wasAt, item });
         const recipients = game.users.filter((u) => this.actor.testUserPermission(u, "OWNER")).map((u) => u.id);
         const speaker = ChatMessagePF2e.getSpeaker({ actor: this.actor, token: this.token });
