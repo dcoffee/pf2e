@@ -148,6 +148,7 @@
                     "Flaw": "Flaw",
                     "Flaws": "Flaws",
                     "HasPartial": "Has Partial Boost",
+                    "Increase": "Increase",
                     "KeyIcon": "Key",
                     "LegacyFlaws": "Legacy Flaws",
                     "Partial": "Partial",
@@ -345,7 +346,11 @@
                 },
                 "Rest": "Rest",
                 "Sidebar": {
+                    "ActivateParty": "Activate Party",
+                    "CreateMember": "Create New Member",
+                    "CreateParty": "Create New Party",
                     "RemoveMember": "Remove Member",
+                    "OpenSheet": "Open Sheet",
                     "OtherParties": "Other Parties"
                 },
                 "Skills": "Party Skills",
@@ -1173,6 +1178,7 @@
         "EffectsLabel": "Effects",
         "EmptySlot": "Empty Slot",
         "Encounter": {
+            "AlreadyRolled": "{actor} has already rolled initiative.",
             "Broadcast": {
                 "FastHealing": {
                     "DeactivatedBy": "Deactivated by {types}",
@@ -5203,6 +5209,9 @@
                 "Note": {
                     "criticalSuccess": "On a critical hit, the target has to succeed at a @Check[type:fortitude|dc:24|name:Thundering Rune] save or be @UUID[Compendium.pf2e.conditionitems.Item.9PR9y0bi4JPKnHPR]{Deafened} for 1 minute (or 1 hour on a critical failure)."
                 }
+            },
+            "underwater": {
+                "Name": "Underwater"
             },
             "unholy": {
                 "Name": "Unholy",

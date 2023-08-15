@@ -56,20 +56,26 @@ class AELikeRuleElement<TSchema extends AELikeSchema> extends RuleElementPF2e<TS
      * Pattern to match system.skills.${longForm} paths for replacement
      * Temporary solution until skill data is represented in long form
      */
-    static SKILL_LONG_FORM_PATH = ((): RegExp => {
+    static #SKILL_LONG_FORM_PATH = ((): RegExp => {
         const skillLongForms = Array.from(SKILL_LONG_FORMS).join("|");
         return new RegExp(String.raw`^system\.skills\.(${skillLongForms})\b`);
     })();
 
-    protected validateData(): void {
+    #rewriteSkillLongFormPath(path: string): string {
+        return path.replace(AELikeRuleElement.#SKILL_LONG_FORM_PATH, (match, group) =>
+            objectHasKey(SKILL_EXPANDED, group) ? `system.skills.${SKILL_EXPANDED[group].shortForm}` : match
+        );
+    }
+
+    #pathIsValid(path: string): boolean {
         const actor = this.item.actor;
-        const pathIsValid =
-            typeof this.path === "string" &&
-            this.path.length > 0 &&
-            [this.path, this.path.replace(/\.\w+$/, ""), this.path.replace(/\.?\w+\.\w+$/, "")].some(
-                (path) => typeof getProperty(actor, path) !== undefined
-            );
-        if (!pathIsValid) return this.warn("path");
+        return (
+            typeof path === "string" &&
+            path.length > 0 &&
+            [path, path.replace(/\.[-\w]+$/, ""), path.replace(/\.?[-\w]+\.[-\w]+$/, "")]
+                .map((p) => this.resolveInjectedProperties(p))
+                .some((path) => getProperty(actor, path) !== undefined)
+        );
     }
 
     /** Apply the modifications immediately after proper ActiveEffects are applied */
@@ -92,16 +98,15 @@ class AELikeRuleElement<TSchema extends AELikeSchema> extends RuleElementPF2e<TS
         if (!this.ignored && this.phase === "beforeRoll") this.applyAELike(rollOptions);
     }
 
-    protected applyAELike(rollOptions = new Set(this.actor.getRollOptions())): void {
-        this.validateData();
-        if (!this.test(rollOptions)) return;
-
+    protected applyAELike(rollOptions?: Set<string>): void {
         // Convert long-form skill slugs in paths to short forms
-        const path = this.resolveInjectedProperties(this.path).replace(
-            AELikeRuleElement.SKILL_LONG_FORM_PATH,
-            (match, group) =>
-                objectHasKey(SKILL_EXPANDED, group) ? `system.skills.${SKILL_EXPANDED[group].shortForm}` : match
-        );
+        const path = this.#rewriteSkillLongFormPath(this.resolveInjectedProperties(this.path));
+        if (!this.#pathIsValid(path)) {
+            return this.failValidation(`no data found at or near "${path}"`);
+        }
+
+        rollOptions ??= this.predicate.length > 0 ? new Set(this.actor.getRollOptions()) : new Set();
+        if (!this.test(rollOptions)) return;
 
         // Do not proceed if injected-property resolution failed
         if (/\bundefined\b/.test(path)) return;
@@ -125,7 +130,11 @@ class AELikeRuleElement<TSchema extends AELikeSchema> extends RuleElementPF2e<TS
                 setProperty(actor, path, newValue);
                 this.#logChange(change);
             } catch (error) {
-                console.warn(error);
+                if (error instanceof Error) {
+                    this.failValidation(error.message);
+                } else {
+                    console.warn(error);
+                }
             }
         }
     }
@@ -221,10 +230,6 @@ class AELikeRuleElement<TSchema extends AELikeSchema> extends RuleElementPF2e<TS
         const { autoChanges } = this.actor.system;
         const entries = (autoChanges[this.path] ??= []);
         entries.push({ mode, level, value, source: this.item.name });
-    }
-
-    protected warn(property: string): void {
-        this.failValidation(`"${property}" property is invalid`);
     }
 }
 

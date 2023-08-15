@@ -68,8 +68,6 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
     /** Non-persisted tweaks to formula data */
     #formulaQuantities: Record<string, number> = {};
 
-    #attributeBuilder?: AttributeBuilder;
-
     static override get defaultOptions(): ActorSheetOptions {
         const options = super.defaultOptions;
         options.classes = [...options.classes, "character"];
@@ -90,6 +88,7 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
 
     override async getData(options?: ActorSheetOptions): Promise<CharacterSheetData<TActor>> {
         const sheetData = (await super.getData(options)) as CharacterSheetData<TActor>;
+        const { actor } = this;
 
         // Martial Proficiencies
         const proficiencies = Object.entries(sheetData.data.martial);
@@ -122,20 +121,20 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
 
             proficiency.label = game.i18n.localize(label);
             const rank = proficiency.rank ?? 0;
-            proficiency.value = createProficiencyModifier({ actor: this.actor, rank, domains: [] }).modifier;
+            proficiency.value = createProficiencyModifier({ actor, rank, domains: [] }).modifier;
         }
 
         // A(H)BCD
-        sheetData.ancestry = this.actor.ancestry;
-        sheetData.heritage = this.actor.heritage;
-        sheetData.background = this.actor.background;
-        sheetData.class = this.actor.class;
-        sheetData.deity = this.actor.deity;
+        sheetData.ancestry = actor.ancestry;
+        sheetData.heritage = actor.heritage;
+        sheetData.background = actor.background;
+        sheetData.class = actor.class;
+        sheetData.deity = actor.deity;
 
         // Update hero points label
         sheetData.data.resources.heroPoints.hover = game.i18n.format(
-            this.actor.heroPoints.value === 1 ? "PF2E.HeroPointRatio.One" : "PF2E.HeroPointRatio.Many",
-            this.actor.heroPoints
+            actor.heroPoints.value === 1 ? "PF2E.HeroPointRatio.One" : "PF2E.HeroPointRatio.Many",
+            actor.heroPoints
         );
 
         // Class DCs
@@ -185,20 +184,20 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         }
 
         // Is the character's key ability score overridden by an Active Effect?
-        sheetData.data.details.keyability.singleOption = this.actor.class?.system.keyAbility.value.length === 1;
+        sheetData.data.details.keyability.singleOption = actor.class?.system.keyAbility.value.length === 1;
 
         // Is the stamina variant rule enabled?
         sheetData.hasStamina = game.settings.get("pf2e", "staminaVariant") > 0;
 
         sheetData.spellcastingEntries = await this.prepareSpellcasting();
         sheetData.actions = this.#prepareActions();
-        sheetData.feats = [...this.actor.feats, this.actor.feats.unorganized];
+        sheetData.feats = [...actor.feats, actor.feats.unorganized];
 
-        const craftingFormulas = await this.actor.getCraftingFormulas();
+        const craftingFormulas = await actor.getCraftingFormulas();
         const formulasByLevel = R.groupBy(craftingFormulas, (f) => f.level);
-        const flags = this.actor.flags.pf2e;
+        const flags = actor.flags.pf2e;
         const hasQuickAlchemy = !!(
-            this.actor.rollOptions.all["feature:quick-alchemy"] || this.actor.rollOptions.all["feat:quick-alchemy"]
+            actor.rollOptions.all["feature:quick-alchemy"] || actor.rollOptions.all["feat:quick-alchemy"]
         );
 
         sheetData.crafting = {
@@ -216,7 +215,7 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
                 return result;
             }, {});
 
-        sheetData.abpEnabled = AutomaticBonusProgression.isEnabled(this.actor);
+        sheetData.abpEnabled = AutomaticBonusProgression.isEnabled(actor);
 
         // Sort attack/defense proficiencies
         const combatProficiencies: MartialProficiencies = sheetData.data.martial;
@@ -249,17 +248,17 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         ) as Record<SkillAbbreviation, CharacterSkillData>;
 
         // Show hints for some things being modified
-        const baseData = this.actor.toObject();
+        const baseData = actor.toObject();
         sheetData.adjustedBonusEncumbranceBulk =
-            this.actor.attributes.bonusEncumbranceBulk !== baseData.system.attributes.bonusEncumbranceBulk;
+            actor.attributes.bonusEncumbranceBulk !== baseData.system.attributes.bonusEncumbranceBulk;
         sheetData.adjustedBonusLimitBulk =
-            this.actor.attributes.bonusLimitBulk !== baseData.system.attributes.bonusLimitBulk;
+            actor.attributes.bonusLimitBulk !== baseData.system.attributes.bonusLimitBulk;
 
-        sheetData.tabVisibility = deepClone(this.actor.flags.pf2e.sheetTabs);
+        sheetData.tabVisibility = deepClone(actor.flags.pf2e.sheetTabs);
 
         // Enrich content
-        const rollData = this.actor.getRollData();
-        const { biography } = this.actor.system.details;
+        const rollData = actor.getRollData();
+        const { biography } = actor.system.details;
         sheetData.enrichedContent.appearance = await TextEditor.enrichHTML(biography.appearance, {
             rollData,
             async: true,
@@ -322,7 +321,7 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
 
     /** Prepares all ability type items that create an action in the sheet */
     #prepareActions(): CharacterSheetData["actions"] {
-        const actor = this.actor;
+        const { actor } = this;
         const result: CharacterSheetData["actions"] = {
             combat: {
                 action: { label: game.i18n.localize("PF2E.ActionsActionsHeader"), actions: [] },
@@ -387,19 +386,6 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         return craftingEntries;
     }
 
-    /** Disable the initiative button located on the sidebar */
-    disableInitiativeButton(): void {
-        this.element
-            .find(".sidebar a.roll-init")
-            .addClass("disabled")
-            .attr({ title: game.i18n.localize("PF2E.Encounter.NoActiveEncounter") });
-    }
-
-    /** Enable the initiative button located on the sidebar */
-    enableInitiativeButton(): void {
-        this.element.find(".sidebar a.roll-init").removeClass("disabled").removeAttr("title");
-    }
-
     /* -------------------------------------------- */
     /*  Event Listeners and Handlers                */
     /* -------------------------------------------- */
@@ -408,21 +394,13 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         super.activateListeners($html);
         const html = $html[0];
 
-        // Initiative button
-        if (game.combat) {
-            this.enableInitiativeButton();
-        } else {
-            this.disableInitiativeButton();
-        }
+        // Toggle the availability of the roll-initiative link
+        this.toggleInitiativeLink();
 
         // Recheck for the presence of an encounter in case the button state has somehow fallen out of sync
-        $html.find(".roll-init").on("mouseenter", (event) => {
-            const $target = $(event.currentTarget);
-            if ($target.hasClass("disabled") && game.combat) {
-                this.enableInitiativeButton();
-            } else if (!$target.hasClass("disabled") && !game.combat) {
-                this.disableInitiativeButton();
-            }
+        const rollInitiativeLink = htmlQuery(html, "aside a[data-action=roll-initiative]");
+        rollInitiativeLink?.addEventListener("mouseenter", () => {
+            this.toggleInitiativeLink();
         });
 
         // Adjust Hero Points
@@ -479,7 +457,7 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         // MAIN
 
         const mainPanel = htmlQuery(html, ".tab[data-tab=character]");
-        if (!mainPanel) throw ErrorPF2e("Unexpected failure finding actions panel");
+        if (!mainPanel) throw ErrorPF2e("Unexpected failure finding main panel");
 
         // Ancestry/Heritage/Class/Background/Deity context menu
         if (this.isEditable) {
@@ -520,8 +498,10 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
             }
 
             htmlQuery(mainPanel, "button[data-action=edit-attribute-modifiers]")?.addEventListener("click", () => {
-                (this.#attributeBuilder ??= new AttributeBuilder(this.actor)).render(true);
-                this.actor.apps[this.#attributeBuilder.appId] = this.#attributeBuilder;
+                const builder =
+                    Object.values(this.actor.apps).find((a) => a instanceof AttributeBuilder) ??
+                    new AttributeBuilder(this.actor);
+                builder.render(true);
             });
         }
 
@@ -672,13 +652,6 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
             });
         }
 
-        // Toggle invested state
-        $html.find(".item-toggle-invest").on("click", (event) => {
-            const f = $(event.currentTarget);
-            const itemId = f.parents(".item").attr("data-item-id") ?? "";
-            this.actor.toggleInvested(itemId);
-        });
-
         $html.find("i.fa-info-circle.small[title]").tooltipster({
             maxWidth: 275,
             position: "right",
@@ -724,8 +697,11 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
 
         $html.find("a[data-action=perception-check]").tooltipster({ theme: "crb-hover" });
 
+        // INVENTORY
+        this.#activateInventoryListeners(html);
+
         // SPELLCASTING
-        const castingPanel = htmlQuery(html, ".tab.spellcasting");
+        const castingPanel = htmlQuery(html, ".tab[data-tab=spellcasting]");
 
         // Focus pool pips
         const focusPips = htmlQueryAll(castingPanel, ".focus-pool");
@@ -970,6 +946,19 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         }
     }
 
+    #activateInventoryListeners(html: HTMLElement): void {
+        const panel = htmlQuery(html, ".tab[data-tab=inventory]");
+        if (!panel) return;
+
+        // Toggle invested state
+        const inventory = htmlQuery(panel, ".inventory-pane");
+        inventory?.addEventListener("click", (event) => {
+            const link = htmlClosest(event.target, "a[data-action=toggle-invested]");
+            const itemId = htmlClosest(link, ".item")?.dataset.itemId;
+            if (itemId) this.actor.toggleInvested(itemId);
+        });
+    }
+
     /** Contextually search the feats tab of the Compendium Browser */
     async #onClickBrowseFeats(element: HTMLElement): Promise<void> {
         const maxLevel = Number(element.dataset.level) || this.actor.level;
@@ -1095,6 +1084,25 @@ class CharacterSheetPF2e<TActor extends CharacterPF2e> extends CreatureSheetPF2e
         const categoryId = event.target?.closest<HTMLElement>("[data-category-id]")?.dataset.categoryId;
         const slotId = event.target?.closest<HTMLElement>("[data-slot-id]")?.dataset.slotId;
         return typeof categoryId === "string" ? { slotId, categoryId } : null;
+    }
+
+    /** Toggle availability of the roll-initiative link on the sidebar */
+    toggleInitiativeLink(link?: HTMLElement | null): void {
+        link ??= htmlQuery(this.element.get(0), "aside a[data-action=roll-initiative]");
+        if (!link) return;
+
+        const alreadyRolled =
+            game.combat && typeof game.combat.combatants.find((c) => c.actor === this.actor)?.initiative === "number";
+        const canRoll = !!(this.isEditable && game.combat && !alreadyRolled);
+
+        if (canRoll) {
+            link.classList.remove("disabled");
+            link.removeAttribute("title");
+        } else {
+            link.classList.add("disabled");
+            const reason = !game.combat ? "NoActiveEncounter" : alreadyRolled ? "AlreadyRolled" : null;
+            if (reason) link.title = game.i18n.format(`PF2E.Encounter.${reason}`, { actor: this.actor.name });
+        }
     }
 
     protected override async _onDropItem(

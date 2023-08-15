@@ -10,36 +10,10 @@ import { looksLikeDamageRoll } from "@system/damage/helpers.ts";
 import { DamageRoll } from "@system/damage/roll.ts";
 import { fontAwesomeIcon, htmlClosest, htmlQuery, objectHasKey } from "@util";
 
-export class ChatLogPF2e extends ChatLog<ChatMessagePF2e> {
-    /** Replace parent method in order to use DamageRoll class as needed */
-    protected override async _processDiceCommand(
-        command: string,
-        matches: RegExpMatchArray[],
-        chatData: DeepPartial<foundry.documents.ChatMessageSource>,
-        createOptions: ChatMessageModificationContext
-    ): Promise<void> {
-        const actor = ChatMessage.getSpeakerActor(chatData.speaker ?? {}) || game.user.character;
-        const rollData = actor?.getRollData() ?? {};
-        const rolls: Rolled<Roll>[] = [];
-        for (const match of matches.filter((m) => !!m)) {
-            const [formula, flavor] = match.slice(2, 4);
-            if (flavor && !chatData.flavor) chatData.flavor = flavor;
-            const roll = ((): Roll => {
-                try {
-                    const damageRoll = new DamageRoll(formula, rollData);
-                    return looksLikeDamageRoll(damageRoll) ? damageRoll : new Roll(formula, rollData);
-                } catch {
-                    return new Roll(formula, rollData);
-                }
-            })();
-            rolls.push(await roll.evaluate({ async: true }));
-        }
-        chatData.type = CONST.CHAT_MESSAGE_TYPES.ROLL;
-        chatData.rolls = rolls.map((r) => r.toJSON());
-        chatData.sound = CONFIG.sounds.dice;
-        chatData.content = rolls.reduce((t, r) => t + r.total, 0).toString();
-        createOptions.rollMode = objectHasKey(CONFIG.Dice.rollModes, command) ? command : "roll";
-    }
+class ChatLogPF2e extends ChatLog<ChatMessagePF2e> {
+    /* -------------------------------------------- */
+    /*  Event Listeners and Handlers                */
+    /* -------------------------------------------- */
 
     override activateListeners($html: JQuery<HTMLElement>): void {
         super.activateListeners($html);
@@ -100,6 +74,50 @@ export class ChatLogPF2e extends ChatLog<ChatMessagePF2e> {
                 }
             }
         });
+    }
+
+    /** Replace parent method in order to use DamageRoll class as needed */
+    protected override async _processDiceCommand(
+        command: string,
+        matches: RegExpMatchArray[],
+        chatData: DeepPartial<foundry.documents.ChatMessageSource>,
+        createOptions: ChatMessageModificationContext
+    ): Promise<void> {
+        const actor = ChatMessage.getSpeakerActor(chatData.speaker ?? {}) || game.user.character;
+        const rollData = actor?.getRollData() ?? {};
+        const rolls: Rolled<Roll>[] = [];
+        for (const match of matches.filter((m) => !!m)) {
+            const [formula, flavor] = match.slice(2, 4);
+            if (flavor && !chatData.flavor) chatData.flavor = flavor;
+            const roll = ((): Roll => {
+                try {
+                    const damageRoll = new DamageRoll(formula, rollData);
+                    return looksLikeDamageRoll(damageRoll) ? damageRoll : new Roll(formula, rollData);
+                } catch {
+                    return new Roll(formula, rollData);
+                }
+            })();
+            rolls.push(await roll.evaluate({ async: true }));
+        }
+        chatData.type = CONST.CHAT_MESSAGE_TYPES.ROLL;
+        chatData.rolls = rolls.map((r) => r.toJSON());
+        chatData.sound = CONFIG.sounds.dice;
+        chatData.content = rolls.reduce((t, r) => t + r.total, 0).toString();
+        createOptions.rollMode = objectHasKey(CONFIG.Dice.rollModes, command) ? command : "roll";
+    }
+
+    /** Upstream method sometimes fails to recognize the top of the chat log as being the highest scroll position. */
+    protected override _onScrollLog(event: JQuery.TriggeredEvent): void {
+        super._onScrollLog(event);
+
+        const log = event.target;
+        if (game.release.build <= 307 && log instanceof HTMLOListElement) {
+            const upstreamScrollPercent = (log.scrollTop + log.clientHeight) / log.scrollHeight;
+            const actualScrollPercent = log.scrollTop / (log.scrollHeight - log.clientHeight);
+            if (upstreamScrollPercent >= 0.01 && actualScrollPercent < 0.001) {
+                this._renderBatch(this.element, CONFIG.ChatMessage.batchSize);
+            }
+        }
     }
 
     static #messageFromEvent(
@@ -437,3 +455,5 @@ export class ChatLogPF2e extends ChatLog<ChatMessagePF2e> {
 }
 
 type DamageButtonClass = "heal-damage" | "half-damage" | "full-damage" | "double-damage" | "triple-damage";
+
+export { ChatLogPF2e };

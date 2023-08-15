@@ -12,18 +12,8 @@ import {
     StatisticModifier,
     createAbilityModifier,
     createProficiencyModifier,
-    ensureProficiencyOption,
 } from "@actor/modifiers.ts";
-import {
-    AttackItem,
-    AttributeString,
-    CheckContext,
-    CheckContextParams,
-    MovementType,
-    RollContext,
-    RollContextParams,
-    SaveType,
-} from "@actor/types.ts";
+import { AttackItem, AttributeString, MovementType, RollContext, RollContextParams, SaveType } from "@actor/types.ts";
 import {
     ATTRIBUTE_ABBREVIATIONS,
     SAVE_TYPES,
@@ -351,6 +341,8 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
 
         const systemData: DeepPartial<CharacterSystemData> & { abilities: Abilities } = this.system;
         const existingBoosts = systemData.build?.attributes?.boosts;
+        const isABP = game.pf2e.variantRules.AutomaticBonusProgression.isEnabled(this);
+
         systemData.build = {
             attributes: {
                 manual: manualAttributes,
@@ -369,6 +361,7 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
                 flaws: {
                     ancestry: [],
                 },
+                apex: isABP ? systemData.build?.attributes?.apex ?? null : null,
             },
         };
 
@@ -404,9 +397,11 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
         // Attributes
         const attributes: DeepPartial<CharacterAttributes> = this.system.attributes;
         attributes.ac = {};
-        attributes.classDC = null;
         attributes.polymorphed = false;
         attributes.battleForm = false;
+        attributes.classDC = null;
+        attributes.spellDC = null;
+        attributes.classOrSpellDC = { rank: 0, value: 0 };
 
         const perception = (attributes.perception ??= { ability: "wis", rank: 0 });
         perception.ability = "wis";
@@ -653,6 +648,9 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
             }
         }
         systemData.attributes.classDC = Object.values(systemData.proficiencies.classDCs).find((c) => c.primary) ?? null;
+        if (systemData.attributes.classDC) {
+            systemData.attributes.classOrSpellDC = R.pick(systemData.attributes.classDC, ["rank", "value"]);
+        }
 
         // Armor Class
         const armorStatistic = this.createArmorStatistic();
@@ -678,63 +676,6 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
             ...systemData.actions.filter((s) => s.ready).map((s) => s.item.system.damage.dice),
             0
         );
-
-        // Spellcasting Entries
-        for (const entry of this.itemTypes.spellcastingEntry) {
-            if (entry.isInnate) {
-                const allRanks = Object.values(this.traditions).map((t) => t.rank ?? 0);
-                entry.system.proficiency.value = Math.max(1, entry.rank, ...allRanks) as ZeroToFour;
-            }
-
-            // Spellcasting entries extend other statistics, usually a tradition, but sometimes class dc
-            const baseStat = this.getStatistic(entry.system.proficiency.slug);
-            if (!baseStat) continue;
-
-            entry.system.ability.value = baseStat.ability ?? entry.system.ability.value;
-            entry.system.proficiency.value = Math.max(entry.rank, baseStat.rank ?? 0) as ZeroToFour;
-            entry.statistic = baseStat.extend({
-                slug: entry.slug ?? sluggify(`${entry.name}-spellcasting`),
-                ability: entry.attribute,
-                rank: entry.rank,
-                rollOptions: entry.getRollOptions("spellcasting"),
-                domains: ["spell-attack-dc", `${entry.attribute}-based`],
-                check: {
-                    type: "spell-attack-roll",
-                    domains: ["spell-attack", "spell-attack-roll", "attack", "attack-roll"],
-                },
-                dc: { domains: ["spell-dc"] },
-            });
-        }
-
-        // Expose best spellcasting DC to character attributes
-        if (this.itemTypes.spellcastingEntry.length > 0) {
-            const best = this.itemTypes.spellcastingEntry.reduce((previous, current) => {
-                return current.statistic.dc.value > previous.statistic.dc.value ? current : previous;
-            });
-            this.system.attributes.spellDC = { rank: best.statistic.rank ?? 0, value: best.statistic.dc.value };
-        } else {
-            this.system.attributes.spellDC = null;
-        }
-
-        // Expose the higher between highest spellcasting DC and (if present) best class DC
-        this.system.attributes.classOrSpellDC = ((): { rank: number; value: number } => {
-            const classDC = Object.values(this.system.proficiencies.classDCs).reduce(
-                (best: ClassDCData | null, classDC) =>
-                    best === null ? classDC : classDC.totalModifier > best.totalModifier ? classDC : best,
-                null
-            );
-
-            const spellDC = this.system.attributes.spellDC;
-            return spellDC && classDC
-                ? spellDC.value > classDC.value
-                    ? { ...spellDC }
-                    : { rank: classDC.rank, value: classDC.value }
-                : classDC && !spellDC
-                ? { rank: classDC.rank, value: classDC.value }
-                : spellDC && !classDC
-                ? { ...spellDC }
-                : { rank: 0, value: 0 };
-        })();
 
         // Initiative
         this.initiative = new ActorInitiative(this);
@@ -779,6 +720,12 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
                     const ability = this.system.abilities[abbrev];
                     ability.mod -= 1;
                 }
+            }
+
+            // Apply Attribute Apex increase: property already nulled out if ABP is disabled
+            if (build.attributes.apex && this.level >= 17) {
+                const attribute = this.system.abilities[build.attributes.apex];
+                attribute.mod = Math.max(attribute.mod + 1, 4);
             }
         }
 
@@ -1298,23 +1245,27 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
         }
 
         const proficiencyRank = Math.max(categoryRank, groupRank, baseWeaponRank, ...syntheticRanks) as ZeroToFour;
-        weaponRollOptions.push(`item:proficiency:rank:${proficiencyRank}`);
         modifiers.push(createProficiencyModifier({ actor: this, rank: proficiencyRank, domains: baseSelectors }));
 
         const baseOptions = new Set([
-            ...this.getRollOptions(baseSelectors),
+            `item:proficiency:rank:${proficiencyRank}`,
             ...weaponTraits, // always add weapon traits as options
-            ...weaponRollOptions,
             meleeOrRanged,
         ]);
-        ensureProficiencyOption(baseOptions, proficiencyRank);
+
+        // Roll options used only in the initial stage of building the strike action
+        const initialRollOptions = new Set([
+            ...baseOptions,
+            ...this.getRollOptions(baseSelectors),
+            ...weaponRollOptions,
+        ]);
 
         // Determine the ability-based synthetic selectors according to the prevailing ability modifier
         const selectors = (() => {
             const options = { resolvables: { weapon } };
             const abilityModifier = [...modifiers, ...extractModifiers(synthetics, baseSelectors, options)]
                 .filter((m): m is ModifierPF2e & { ability: AttributeString } => m.type === "ability")
-                .flatMap((modifier) => (modifier.predicate.test(baseOptions) ? modifier : []))
+                .flatMap((modifier) => (modifier.predicate.test(initialRollOptions) ? modifier : []))
                 .reduce((best, candidate) => (candidate.modifier > best.modifier ? candidate : best));
 
             if (!abilityModifier) {
@@ -1350,7 +1301,7 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
         const weaponPotency = (() => {
             const potency = selectors
                 .flatMap((key) => deepClone(synthetics.weaponPotency[key] ?? []))
-                .filter((wp) => wp.predicate.test(baseOptions));
+                .filter((wp) => wp.predicate.test(initialRollOptions));
 
             if (weapon.system.runes.potency) {
                 potency.push({
@@ -1379,11 +1330,12 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
 
         // Everything from relevant synthetics
         modifiers.push(
+            ...PCStrikeAttackTraits.createAttackModifiers({ weapon, domains: selectors }),
             ...extractModifiers(synthetics, selectors, { injectables: { weapon }, resolvables: { weapon } })
         );
 
         // Multiple attack penalty
-        const multipleAttackPenalty = calculateMAPs(weapon, { domains: selectors, options: baseOptions });
+        const multipleAttackPenalty = calculateMAPs(weapon, { domains: selectors, options: initialRollOptions });
 
         const auxiliaryActions: WeaponAuxiliaryAction[] = [];
         const isRealItem = this.items.has(weapon.id);
@@ -1763,23 +1715,6 @@ class CharacterPF2e<TParent extends TokenDocumentPF2e | null = TokenDocumentPF2e
         const context = await super.getRollContext(params);
         if (params.statistic instanceof StatisticModifier && context.self.item?.isOfType("weapon")) {
             PCStrikeAttackTraits.adjustWeapon(context.self.item);
-        }
-
-        return context;
-    }
-
-    /** Create attack-roll modifiers from weapon traits */
-    override getCheckContext<TStatistic extends StatisticCheck | StrikeData, TItem extends AttackItem | null>(
-        params: CheckContextParams<TStatistic, TItem>
-    ): Promise<CheckContext<this, TStatistic, TItem>>;
-    override async getCheckContext(params: CheckContextParams): Promise<CheckContext<this>> {
-        const context = await super.getCheckContext(params);
-        if (params.statistic instanceof StatisticModifier && context.self.item?.isOfType("weapon")) {
-            const fromTraits = PCStrikeAttackTraits.createAttackModifiers({
-                weapon: context.self.item,
-                domains: params.domains,
-            });
-            context.self.modifiers.push(...fromTraits);
         }
 
         return context;
